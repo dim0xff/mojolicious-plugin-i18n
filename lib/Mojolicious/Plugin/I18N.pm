@@ -12,6 +12,7 @@ our $VERSION = '1.6';
 sub register {
 	my ($plugin, $app, $conf) = @_;
 
+
 	# Initialize
 	my $namespace = $conf->{namespace} || ( (ref $app) . '::I18N' );
 	my $default   = $conf->{default  } || 'en';
@@ -40,13 +41,14 @@ sub register {
 			;
 
 			# Host detection
-			my $host = $self->req->headers->header('X-Host') || $self->req->headers->host;
-			if ($conf->{support_hosts} && $host) {
-				$host =~ s/^www\.//; # hack
-				if (my $lang = $conf->{support_hosts}->{ $host }) {
-					$self->app->log->debug("Found language $lang, Host header is $host");
+			if ( $conf->{support_hosts} ) {
+				if ( my $host = $self->req->headers->header('X-Host') || $self->req->headers->host ) {
+					$host =~ s/^www\.//; # hack
+					if (my $lang = $conf->{support_hosts}->{ $host }) {
+						$self->app->log->debug("Found language $lang, Host header is $host");
 
-					unshift @languages, $lang;
+						unshift @languages, $lang;
+					}
 				}
 			}
 
@@ -54,29 +56,31 @@ sub register {
 			$self->stash(lang_default => $languages[0]) if $languages[0];
 
 			# URL detection
-			if (my $path = $self->req->url->path) {
-				my $part = $path->parts->[0];
+			if ($langs) {
+				if (my $path = $self->req->url->path) {
+					my $part = $path->parts->[0];
 
-				if ($part && $langs && grep { $part eq $_ } @$langs) {
-					# Ignore static files
-					return if $self->res->code;
+					if ($part && grep { $part eq $_ } @$langs) {
+						# Ignore static files
+						return if $self->res->code;
 
-					$self->app->log->debug("Found language $part in URL $path");
+						$self->app->log->debug("Found language $part in URL $path");
 
-					unshift @languages, $part;
+						unshift @languages, $part;
 
-					# Save lang in stash
-					$self->stash(lang => $part);
+						# Save lang in stash
+						$self->stash(lang => $part);
 
-					# Clean path
-					shift @{$path->parts};
-					$path->trailing_slash(0);
+						# Clean path
+						shift @{$path->parts};
+						$path->trailing_slash(0);
+					}
 				}
 			}
 
 			# Languages
 			$self->languages(@languages, $default);
-    	}
+		}
 	);
 
 	# Add "languages" helper
@@ -93,45 +97,47 @@ sub register {
 		$self->stash->{i18n}->localize(@_);
 	});
 
-	# Reimplement "url_for" helper
-	my $mojo_url_for = *Mojolicious::Controller::url_for{CODE};
+	if ( $conf->{reimplement_url_for} // 1 ) {
+		# Reimplement "url_for" helper
+		my $mojo_url_for = *Mojolicious::Controller::url_for{CODE};
 
-	my $i18n_url_for = sub {
-		my $self = shift;
-		my $url  = $self->$mojo_url_for(@_);
+		my $i18n_url_for = sub {
+			my $self = shift;
+			my $url  = $self->$mojo_url_for(@_);
 
-		# Absolute URL
-		return $url if $url->is_abs;
+			# Absolute URL
+			return $url if $url->is_abs;
 
-		# Discard target if present
-		shift if (@_ % 2 && !ref $_[0]) || (@_ > 1 && ref $_[-1]);
+			# Discard target if present
+			shift if (@_ % 2 && !ref $_[0]) || (@_ > 1 && ref $_[-1]);
 
-		# Unveil params
-		my %params = @_ == 1 ? %{$_[0]} : @_;
+			# Unveil params
+			my %params = @_ == 1 ? %{$_[0]} : @_;
 
-		# Detect lang
-		if (my $lang = $params{lang} || $self->stash('lang')) {
-			my $path = $url->path || [];
+			# Detect lang
+			if (my $lang = $params{lang} || $self->stash('lang')) {
+				my $path = $url->path || [];
 
-			# Root
-			if (!$path->[0]) {
-				$path->parts([ $lang ]);
+				# Root
+				if (!$path->[0]) {
+					$path->parts([ $lang ]);
+				}
+
+				# No language detected
+				elsif ( ref $langs ne 'ARRAY' or not scalar grep { $path->contains("/$_") } @$langs ) {
+					unshift @{ $path->parts }, $lang;
+				}
 			}
 
-			# No language detected
-			elsif ( ref $langs ne 'ARRAY' or not scalar grep { $path->contains("/$_") } @$langs ) {
-				unshift @{ $path->parts }, $lang;
-			}
+			$url;
+		};
+
+		{
+			no strict 'refs';
+			no warnings 'redefine';
+
+			*Mojolicious::Controller::url_for = $i18n_url_for;
 		}
-
-		$url;
-	};
-
-	{
-		no strict 'refs';
-		no warnings 'redefine';
-
-		*Mojolicious::Controller::url_for = $i18n_url_for;
 	}
 }
 
