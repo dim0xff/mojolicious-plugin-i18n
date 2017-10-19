@@ -22,13 +22,20 @@ sub register {
 	my $langs     = $conf->{support_url_langs};
 	my $hosts     = $conf->{support_hosts    };
 
-        my $handler = Mojolicious::Plugin::I18N::_Handler->new(namespace => $namespace, default => $default);
-        $app->defaults( 'i18n' => $handler );
+	# Default Handler
+	my $handler   = sub {
+		shift->stash->{i18n} =
+			Mojolicious::Plugin::I18N::_Handler->new(namespace => $namespace, default => $default)
+		;
+	};
 
 	# Add hook
 	$app->hook(
 		before_dispatch => sub {
 			my $self = shift;
+
+			# Handler
+			$handler->( $self );
 
 			# Header detection
 			my @languages = $conf->{no_header_detect}
@@ -87,12 +94,16 @@ sub register {
 	$app->helper(languages => sub {
 		my $self = shift;
 
+		$handler->( $self ) unless $self->stash('i18n');
+
 		$self->stash->{i18n}->languages(@_);
 	});
 
 	# Add "l" helper
 	$app->helper(l => sub {
 		my $self = shift;
+
+		$handler->( $self ) unless $self->stash('i18n');
 
 		$self->stash->{i18n}->localize(@_);
 	});
