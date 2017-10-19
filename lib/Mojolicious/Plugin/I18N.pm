@@ -21,20 +21,13 @@ sub register {
 	my $langs     = $conf->{support_url_langs};
 	my $hosts     = $conf->{support_hosts    };
 
-	# Default Handler
-	my $handler   = sub {
-		shift->stash->{i18n} =
-			Mojolicious::Plugin::I18N::_Handler->new(namespace => $namespace, default => $default)
-		;
-	};
+        my $handler = Mojolicious::Plugin::I18N::_Handler->new(namespace => $namespace, default => $default);
+        $app->defaults( 'i18n' => $handler );
 
 	# Add hook
 	$app->hook(
 		before_dispatch => sub {
 			my $self = shift;
-
-			# Handler
-			$handler->( $self );
 
 			# Header detection
 			my @languages = $conf->{no_header_detect}
@@ -49,7 +42,6 @@ sub register {
 			# Host detection
 			my $host = $self->req->headers->header('X-Host') || $self->req->headers->host;
 			if ($conf->{support_hosts} && $host) {
-				warn $host;
 				$host =~ s/^www\.//; # hack
 				if (my $lang = $conf->{support_hosts}->{ $host }) {
 					$self->app->log->debug("Found language $lang, Host header is $host");
@@ -91,16 +83,12 @@ sub register {
 	$app->helper(languages => sub {
 		my $self = shift;
 
-		$handler->( $self ) unless $self->stash('i18n');
-
 		$self->stash->{i18n}->languages(@_);
 	});
 
 	# Add "l" helper
 	$app->helper(l => sub {
 		my $self = shift;
-
-		$handler->( $self ) unless $self->stash('i18n');
 
 		$self->stash->{i18n}->localize(@_);
 	});
