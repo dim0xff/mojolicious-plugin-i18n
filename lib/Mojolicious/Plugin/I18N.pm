@@ -263,6 +263,12 @@ Old namespace is L<Mojolicious::Plugin::I18N2>.
 
 L<Mojolicious::Plugin::I18N> supports the following options.
 
+=head2 C<reimplement_url_for>
+
+  plugin I18N => {reimplement_url_for=>0};
+
+Disable reimplementation for url_for. Enabled by default.
+
 =head2 C<support_url_langs>
 
   plugin I18N => {support_url_langs => [qw(en de)]};
